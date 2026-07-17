@@ -28,6 +28,7 @@ import { FileDropzone } from "./file-dropzone";
 import { ManualRoster } from "./manual-roster";
 import { parsePeopleFile } from "../lib/excel";
 import { createManualRow, parseManualRows } from "../lib/manual";
+import { parseTimetableFile } from "../lib/timetable";
 import { downloadArchive, generateNametagArchive } from "../lib/generator";
 import type { ManualPersonRow } from "../types";
 
@@ -50,6 +51,7 @@ export function NametagGenerator() {
   const [manualRows, setManualRows] = useState<ManualPersonRow[]>(() => [
     createManualRow(),
   ]);
+  const [timetableFiles, setTimetableFiles] = useState<File[]>([]);
   const [arrangedLayout, setArrangedLayout] = useState(false);
   const [studentWidthMm, setStudentWidthMm] = useState(83);
   const [nonStudentWidthMm, setNonStudentWidthMm] = useState(95);
@@ -106,10 +108,15 @@ export function NametagGenerator() {
         rosterMode === "excel"
           ? await parsePeopleFile(excelFiles[0])
           : parseManualRows(manualRows);
+      const timetable =
+        timetableFiles.length > 0
+          ? await parseTimetableFile(timetableFiles[0])
+          : null;
       const archive = await generateNametagArchive({
         people,
         bigTemplates,
         smallTemplates,
+        timetable,
         options: {
           arrangedLayout,
           studentWidthMm,
@@ -183,6 +190,11 @@ export function NametagGenerator() {
                 학생 여부가 <strong>T</strong>이면 작은 이름표, 그 외에는 큰
                 이름표를 사용합니다. 교회만 비워둘 수 있습니다.
               </li>
+              <li>
+                이름표 뒷면에 붙일 시간표가 필요하면 첫 열이{" "}
+                <strong>시간</strong>, 나머지 열이 <strong>날짜</strong>인
+                시간표 엑셀 파일을 선택합니다. (선택사항)
+              </li>
               <li>필요하면 A4 배치 옵션을 켠 뒤 이름표를 생성합니다.</li>
             </ol>
 
@@ -214,6 +226,35 @@ export function NametagGenerator() {
                       <td className="px-3 py-2.5">광림교회</td>
                       <td className="px-3 py-2.5">선생님</td>
                       <td className="px-3 py-2.5">F</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <h2 className="mb-3 font-semibold text-foreground">
+                시간표 엑셀 예시
+              </h2>
+              <div className="overflow-x-auto rounded-xl border border-black/[0.05] bg-white">
+                <table className="w-full min-w-140 border-collapse text-left text-xs">
+                  <thead className="bg-[#efeee9] text-foreground">
+                    <tr>
+                      <th className="px-3 py-2.5 font-semibold">시간</th>
+                      <th className="px-3 py-2.5 font-semibold">7/24 (금)</th>
+                      <th className="px-3 py-2.5 font-semibold">7/25 (토)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-background">
+                    <tr>
+                      <td className="px-3 py-2.5">08:00 - 09:00</td>
+                      <td className="px-3 py-2.5">아침 식사</td>
+                      <td className="px-3 py-2.5">아침 식사</td>
+                    </tr>
+                    <tr className="bg-[#f8f7f4]">
+                      <td className="px-3 py-2.5">09:00 - 11:00</td>
+                      <td className="px-3 py-2.5">개회 예배</td>
+                      <td className="px-3 py-2.5">조별 활동</td>
                     </tr>
                   </tbody>
                 </table>
@@ -369,6 +410,26 @@ export function NametagGenerator() {
             ) : (
               <ManualRoster rows={manualRows} onRowsChange={setManualRows} />
             )}
+          </CardContent>
+        </Card>
+
+        <Card className="mt-5 border-black/[0.06] shadow-[0_1px_2px_rgba(32,32,42,0.025)]">
+          <CardHeader>
+            <CardTitle>시간표 (선택)</CardTitle>
+            <CardDescription>
+              시간표 엑셀 파일을 선택하면 이름표 뒷면에 붙일 수 있도록 이름표
+              크기에 맞춰 함께 만들어 드려요
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <FileDropzone
+              files={timetableFiles}
+              onFilesChange={setTimetableFiles}
+              accept={EXCEL_ACCEPT}
+              multiple={false}
+              kind="excel"
+              prompt="시간표 엑셀 파일 선택"
+            />
           </CardContent>
         </Card>
 
