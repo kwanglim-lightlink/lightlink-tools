@@ -1,5 +1,5 @@
 import JSZip from "jszip";
-import type { GenerationInput, PersonData } from "../types";
+import type { GenerationInput, PersonData, TimetableData } from "../types";
 
 const A4_WIDTH = 2480;
 const A4_HEIGHT = 3508;
@@ -182,28 +182,21 @@ function packNametags(
   return placements;
 }
 
-async function generateA4Pages({
-  people,
-  templates,
-  widthMm,
-  spareCount,
-  isStudent,
+async function renderA4Sheets({
+  itemWidth,
+  itemHeight,
+  count,
+  getImage,
   onPage,
 }: {
-  people: PersonData[];
-  templates: File[];
-  widthMm: number;
-  spareCount: number;
-  isStudent: boolean;
+  itemWidth: number;
+  itemHeight: number;
+  count: number;
+  getImage: (
+    index: number,
+  ) => CanvasImageSource | Promise<CanvasImageSource>;
   onPage: () => void;
 }) {
-  const total = people.length + spareCount;
-  if (total === 0 || templates.length === 0) return [];
-
-  const loadedTemplates = await Promise.all(templates.map(loadFileImage));
-  const aspectRatio = loadedTemplates[0].height / loadedTemplates[0].width;
-  const nametagWidth = mmToPixels(widthMm);
-  const nametagHeight = Math.round(nametagWidth * aspectRatio);
   const margin = mmToPixels(10);
   const spacing = mmToPixels(2);
   const border = mmToPixels(1);
@@ -212,13 +205,13 @@ async function generateA4Pages({
   const pages: Blob[] = [];
   let processed = 0;
 
-  while (processed < total) {
+  while (processed < count) {
     const placements = packNametags(
-      nametagWidth,
-      nametagHeight,
+      itemWidth,
+      itemHeight,
       availableWidth,
       availableHeight,
-      total - processed,
+      count - processed,
       spacing,
     );
 
@@ -238,21 +231,21 @@ async function generateA4Pages({
     context.strokeStyle = "#e0e0e0";
     context.lineWidth = 0.5;
     const gridColumns = Math.floor(
-      availableWidth / (nametagWidth + spacing),
+      availableWidth / (itemWidth + spacing),
     );
     const gridRows = Math.floor(
-      availableHeight / (nametagHeight + spacing),
+      availableHeight / (itemHeight + spacing),
     );
 
     for (let row = 0; row <= gridRows; row += 1) {
-      const y = margin + row * (nametagHeight + spacing);
+      const y = margin + row * (itemHeight + spacing);
       context.beginPath();
       context.moveTo(margin, y);
       context.lineTo(A4_WIDTH - margin, y);
       context.stroke();
     }
     for (let column = 0; column <= gridColumns; column += 1) {
-      const x = margin + column * (nametagWidth + spacing);
+      const x = margin + column * (itemWidth + spacing);
       context.beginPath();
       context.moveTo(x, margin);
       context.lineTo(x, A4_HEIGHT - margin);
@@ -261,25 +254,13 @@ async function generateA4Pages({
 
     for (let index = 0; index < placements.length; index += 1) {
       const placement = placements[index];
-      const itemIndex = processed + index;
       const x = margin + placement.x;
       const y = margin + placement.y;
       const imageX = x + border;
       const imageY = y + border;
       const imageWidth = placement.width - border * 2;
       const imageHeight = placement.height - border * 2;
-      const template = randomItem(loadedTemplates);
-      let image: CanvasImageSource = template;
-
-      if (itemIndex < people.length) {
-        image = await drawNametag(
-          people[itemIndex],
-          template,
-          template.width,
-          template.height,
-          isStudent,
-        );
-      }
+      const image = await getImage(processed + index);
 
       context.strokeStyle = "#888888";
       context.lineWidth = 1;
@@ -320,10 +301,171 @@ async function generateA4Pages({
   return pages;
 }
 
+async function generateA4Pages({
+  people,
+  templates,
+  widthMm,
+  spareCount,
+  isStudent,
+  onPage,
+}: {
+  people: PersonData[];
+  templates: File[];
+  widthMm: number;
+  spareCount: number;
+  isStudent: boolean;
+  onPage: () => void;
+}) {
+  const total = people.length + spareCount;
+  if (total === 0 || templates.length === 0) return [];
+
+  const loadedTemplates = await Promise.all(templates.map(loadFileImage));
+  const aspectRatio = loadedTemplates[0].height / loadedTemplates[0].width;
+  const nametagWidth = mmToPixels(widthMm);
+
+  return renderA4Sheets({
+    itemWidth: nametagWidth,
+    itemHeight: Math.round(nametagWidth * aspectRatio),
+    count: total,
+    getImage: (index) => {
+      const template = randomItem(loadedTemplates);
+      return index < people.length
+        ? drawNametag(
+            people[index],
+            template,
+            template.width,
+            template.height,
+            isStudent,
+          )
+        : template;
+    },
+    onPage,
+  });
+}
+
+function drawTimetableCard(
+  timetable: TimetableData,
+  width: number,
+  height: number,
+) {
+  const canvas = createCanvas(width, height);
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("이미지 캔버스를 만들 수 없습니다.");
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, width, height);
+
+  const padding = Math.round(Math.min(width, height) * 0.05);
+  const tableWidth = width - padding * 2;
+  const tableHeight = height - padding * 2;
+  const rowCount = timetable.rows.length + 1;
+  const rowHeight = tableHeight / rowCount;
+  const timeColumnWidth = tableWidth * 0.26;
+  const dayColumnWidth =
+    (tableWidth - timeColumnWidth) / timetable.dayHeaders.length;
+
+  context.fillStyle = "#efeee9";
+  context.fillRect(padding, padding, tableWidth, rowHeight);
+
+  context.strokeStyle = "#20202a";
+  context.lineWidth = Math.max(1, Math.round(width / 600));
+  for (let row = 0; row <= rowCount; row += 1) {
+    const y = padding + row * rowHeight;
+    context.beginPath();
+    context.moveTo(padding, y);
+    context.lineTo(padding + tableWidth, y);
+    context.stroke();
+  }
+  for (let column = 0; column <= timetable.dayHeaders.length + 1; column += 1) {
+    const x =
+      column === 0
+        ? padding
+        : padding + timeColumnWidth + (column - 1) * dayColumnWidth;
+    context.beginPath();
+    context.moveTo(x, padding);
+    context.lineTo(x, padding + tableHeight);
+    context.stroke();
+  }
+
+  context.fillStyle = "#000000";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  const baseFontSize = Math.min(rowHeight * 0.42, width * 0.05);
+
+  const drawCell = (
+    value: string,
+    columnIndex: number,
+    rowIndex: number,
+    weight: number,
+  ) => {
+    if (!value) return;
+    const cellX =
+      columnIndex === 0
+        ? padding
+        : padding + timeColumnWidth + (columnIndex - 1) * dayColumnWidth;
+    const cellWidth = columnIndex === 0 ? timeColumnWidth : dayColumnWidth;
+    const maxWidth = cellWidth * 0.9;
+    let fontSize = baseFontSize;
+    context.font = `${weight} ${fontSize}px Pretendard, sans-serif`;
+    while (fontSize > 10 && context.measureText(value).width > maxWidth) {
+      fontSize -= 1;
+      context.font = `${weight} ${fontSize}px Pretendard, sans-serif`;
+    }
+    context.fillText(
+      value,
+      cellX + cellWidth / 2,
+      padding + rowIndex * rowHeight + rowHeight / 2,
+      maxWidth,
+    );
+  };
+
+  drawCell(timetable.timeHeader, 0, 0, 700);
+  timetable.dayHeaders.forEach((day, index) => drawCell(day, index + 1, 0, 700));
+  timetable.rows.forEach((row, rowIndex) => {
+    drawCell(row.time, 0, rowIndex + 1, 500);
+    row.entries.forEach((entry, index) =>
+      drawCell(entry, index + 1, rowIndex + 1, 500),
+    );
+  });
+
+  return canvas;
+}
+
+async function generateTimetableA4Pages({
+  timetable,
+  templates,
+  widthMm,
+  count,
+  onPage,
+}: {
+  timetable: TimetableData;
+  templates: File[];
+  widthMm: number;
+  count: number;
+  onPage: () => void;
+}) {
+  if (count === 0 || templates.length === 0) return [];
+
+  const template = await loadFileImage(templates[0]);
+  const aspectRatio = template.height / template.width;
+  const cardWidth = mmToPixels(widthMm);
+  const cardHeight = Math.round(cardWidth * aspectRatio);
+  const card = drawTimetableCard(timetable, cardWidth, cardHeight);
+
+  return renderA4Sheets({
+    itemWidth: cardWidth,
+    itemHeight: cardHeight,
+    count,
+    getImage: () => card,
+    onPage,
+  });
+}
+
 export async function generateNametagArchive({
   people,
   bigTemplates,
   smallTemplates,
+  timetable,
   options,
   onProgress,
 }: GenerationInput) {
@@ -387,6 +529,30 @@ export async function generateNametagArchive({
     nonStudentPages.forEach((page, index) => {
       zip.file(`A4_일반_${index + 1}.png`, page);
     });
+
+    if (timetable) {
+      const studentTimetablePages = await generateTimetableA4Pages({
+        timetable,
+        templates: smallTemplates,
+        widthMm: options.studentWidthMm,
+        count: students.length + options.studentSpareCount,
+        onPage: advancePage,
+      });
+      const nonStudentTimetablePages = await generateTimetableA4Pages({
+        timetable,
+        templates: bigTemplates,
+        widthMm: options.nonStudentWidthMm,
+        count: nonStudents.length + options.nonStudentSpareCount,
+        onPage: advancePage,
+      });
+
+      studentTimetablePages.forEach((page, index) => {
+        zip.file(`A4_시간표_학생_${index + 1}.png`, page);
+      });
+      nonStudentTimetablePages.forEach((page, index) => {
+        zip.file(`A4_시간표_일반_${index + 1}.png`, page);
+      });
+    }
   } else {
     const loadedBigTemplates = await Promise.all(
       bigTemplates.map(loadFileImage),
@@ -423,6 +589,28 @@ export async function generateNametagArchive({
         15 + Math.round(((index + 1) / people.length) * 70),
         `이름표를 만드는 중... (${index + 1}/${people.length})`,
       );
+    }
+
+    if (timetable) {
+      onProgress?.(87, "시간표를 만드는 중...");
+      if (students.length > 0) {
+        const template = loadedSmallTemplates[0];
+        zip.file(
+          "시간표_학생용.png",
+          await canvasToBlob(
+            drawTimetableCard(timetable, template.width, template.height),
+          ),
+        );
+      }
+      if (nonStudents.length > 0) {
+        const template = loadedBigTemplates[0];
+        zip.file(
+          "시간표_일반용.png",
+          await canvasToBlob(
+            drawTimetableCard(timetable, template.width, template.height),
+          ),
+        );
+      }
     }
   }
 

@@ -21,10 +21,20 @@ export type GenerationOptions = {
   nonStudentSpareCount: number;
 };
 
+export type TimetableData = {
+  timeHeader: string;
+  dayHeaders: string[];
+  rows: {
+    time: string;
+    entries: string[];
+  }[];
+};
+
 export type GenerationInput = {
   people: PersonData[];
   bigTemplates: File[];
   smallTemplates: File[];
+  timetable?: TimetableData | null;
   options: GenerationOptions;
   onProgress?: (value: number, message: string) => void;
 };
