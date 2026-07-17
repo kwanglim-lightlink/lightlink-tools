@@ -23,9 +23,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
 import { FileDropzone } from "./file-dropzone";
+import { ManualRoster } from "./manual-roster";
 import { parsePeopleFile } from "../lib/excel";
+import { createManualRow, parseManualRows } from "../lib/manual";
 import { downloadArchive, generateNametagArchive } from "../lib/generator";
+import type { ManualPersonRow } from "../types";
 
 const IMAGE_ACCEPT = {
   "image/*": [".png", ".jpg", ".jpeg", ".gif", ".bmp"],
@@ -41,18 +45,23 @@ const EXCEL_ACCEPT = {
 export function NametagGenerator() {
   const [bigTemplates, setBigTemplates] = useState<File[]>([]);
   const [smallTemplates, setSmallTemplates] = useState<File[]>([]);
+  const [rosterMode, setRosterMode] = useState<"excel" | "manual">("excel");
   const [excelFiles, setExcelFiles] = useState<File[]>([]);
+  const [manualRows, setManualRows] = useState<ManualPersonRow[]>(() => [
+    createManualRow(),
+  ]);
   const [arrangedLayout, setArrangedLayout] = useState(false);
   const [studentWidthMm, setStudentWidthMm] = useState(83);
   const [nonStudentWidthMm, setNonStudentWidthMm] = useState(95);
+  const [studentSpareCount, setStudentSpareCount] = useState(0);
+  const [nonStudentSpareCount, setNonStudentSpareCount] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const generate = async () => {
-    const excelFile = excelFiles[0];
-    if (!excelFile) {
+    if (rosterMode === "excel" && excelFiles.length === 0) {
       setError("엑셀 파일을 선택해 주세요.");
       return;
     }
@@ -70,14 +79,33 @@ export function NametagGenerator() {
       setError("이름표 너비는 50mm에서 150mm 사이여야 합니다.");
       return;
     }
+    if (
+      arrangedLayout &&
+      (!Number.isInteger(studentSpareCount) ||
+        !Number.isInteger(nonStudentSpareCount) ||
+        studentSpareCount < 0 ||
+        studentSpareCount > 100 ||
+        nonStudentSpareCount < 0 ||
+        nonStudentSpareCount > 100)
+    ) {
+      setError("여유분 수량은 0장에서 100장 사이의 정수여야 합니다.");
+      return;
+    }
 
     setIsGenerating(true);
     setError(null);
     setProgress(2);
-    setProgressMessage("엑셀 파일을 확인하는 중...");
+    setProgressMessage(
+      rosterMode === "excel"
+        ? "엑셀 파일을 확인하는 중..."
+        : "입력한 명단을 확인하는 중...",
+    );
 
     try {
-      const people = await parsePeopleFile(excelFile);
+      const people =
+        rosterMode === "excel"
+          ? await parsePeopleFile(excelFiles[0])
+          : parseManualRows(manualRows);
       const archive = await generateNametagArchive({
         people,
         bigTemplates,
@@ -86,6 +114,8 @@ export function NametagGenerator() {
           arrangedLayout,
           studentWidthMm,
           nonStudentWidthMm,
+          studentSpareCount: arrangedLayout ? studentSpareCount : 0,
+          nonStudentSpareCount: arrangedLayout ? nonStudentSpareCount : 0,
         },
         onProgress: (value, message) => {
           setProgress(value);
@@ -124,7 +154,8 @@ export function NametagGenerator() {
             국내선교 이름표 생성기
           </h1>
           <p className="mt-3 text-sm text-muted-foreground sm:text-base">
-            이름표 배경과 엑셀 명단을 넣으면 인쇄용 파일을 한 번에 만들어요.
+            이름표 배경과 명단(엑셀 또는 직접 입력)을 넣으면 인쇄용 파일을 한
+            번에 만들어요.
           </p>
           <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-secondary px-3 py-1.5 text-xs text-muted-foreground">
             <LockKeyhole className="size-3.5" />
@@ -145,7 +176,8 @@ export function NametagGenerator() {
               <li>학생용 작은 이름표와 일반용 큰 이름표 배경을 선택합니다.</li>
               <li>
                 첫 행이 <strong>성명, 교회, 나이/학년/직책, 학생 여부</strong>인
-                엑셀 파일을 선택합니다.
+                엑셀 파일을 선택하거나, <strong>직접 입력</strong> 탭에서 명단을
+                바로 입력합니다.
               </li>
               <li>
                 학생 여부가 <strong>T</strong>이면 작은 이름표, 그 외에는 큰
@@ -288,20 +320,55 @@ export function NametagGenerator() {
 
         <Card className="mt-5 border-black/[0.06] shadow-[0_1px_2px_rgba(32,32,42,0.025)]">
           <CardHeader>
-            <CardTitle>엑셀 명단</CardTitle>
+            <CardTitle>명단</CardTitle>
             <CardDescription>
-              XLSX 또는 XLS 파일 한 개를 선택해 주세요
+              {rosterMode === "excel"
+                ? "XLSX 또는 XLS 파일 한 개를 선택해 주세요"
+                : "이름표에 들어갈 사람을 한 명씩 입력해 주세요"}
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <FileDropzone
-              files={excelFiles}
-              onFilesChange={setExcelFiles}
-              accept={EXCEL_ACCEPT}
-              multiple={false}
-              kind="excel"
-              prompt="엑셀 파일 선택"
-            />
+          <CardContent className="space-y-4">
+            <div
+              className="inline-flex rounded-lg bg-secondary p-1"
+              role="tablist"
+              aria-label="명단 입력 방식"
+            >
+              {(
+                [
+                  ["excel", "엑셀 파일"],
+                  ["manual", "직접 입력"],
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="tab"
+                  aria-selected={rosterMode === mode}
+                  className={cn(
+                    "rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors",
+                    rosterMode === mode
+                      ? "bg-white text-foreground shadow-[0_1px_2px_rgba(32,32,42,0.08)]"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() => setRosterMode(mode)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {rosterMode === "excel" ? (
+              <FileDropzone
+                files={excelFiles}
+                onFilesChange={setExcelFiles}
+                accept={EXCEL_ACCEPT}
+                multiple={false}
+                kind="excel"
+                prompt="엑셀 파일 선택"
+              />
+            ) : (
+              <ManualRoster rows={manualRows} onRowsChange={setManualRows} />
+            )}
           </CardContent>
         </Card>
 
@@ -317,7 +384,9 @@ export function NametagGenerator() {
               <Checkbox
                 id="arranged-layout"
                 checked={arrangedLayout}
-                onCheckedChange={(checked) => setArrangedLayout(checked === true)}
+                onCheckedChange={(checked) =>
+                  setArrangedLayout(checked === true)
+                }
               />
               <Label htmlFor="arranged-layout" className="cursor-pointer">
                 A4 용지에 배치하기
@@ -356,6 +425,39 @@ export function NametagGenerator() {
                     }
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="student-spare">학생 이름표 여유분 (장)</Label>
+                  <Input
+                    id="student-spare"
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={studentSpareCount}
+                    className="border-black/[0.08] bg-white shadow-none"
+                    onChange={(event) =>
+                      setStudentSpareCount(Number(event.target.value))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="non-student-spare">
+                    일반 이름표 여유분 (장)
+                  </Label>
+                  <Input
+                    id="non-student-spare"
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={nonStudentSpareCount}
+                    className="border-black/[0.08] bg-white shadow-none"
+                    onChange={(event) =>
+                      setNonStudentSpareCount(Number(event.target.value))
+                    }
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground sm:col-span-2">
+                  여유분은 이름 없이 배경만 있는 빈 이름표로 함께 배치됩니다.
+                </p>
               </div>
             )}
           </CardContent>

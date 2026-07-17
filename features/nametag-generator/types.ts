@@ -5,10 +5,20 @@ export type PersonData = {
   "학생 여부": string;
 };
 
+export type ManualPersonRow = {
+  id: string;
+  name: string;
+  church: string;
+  role: string;
+  isStudent: boolean;
+};
+
 export type GenerationOptions = {
   arrangedLayout: boolean;
   studentWidthMm: number;
   nonStudentWidthMm: number;
+  studentSpareCount: number;
+  nonStudentSpareCount: number;
 };
 
 export type GenerationInput = {

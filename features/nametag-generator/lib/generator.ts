@@ -186,16 +186,19 @@ async function generateA4Pages({
   people,
   templates,
   widthMm,
+  spareCount,
   isStudent,
   onPage,
 }: {
   people: PersonData[];
   templates: File[];
   widthMm: number;
+  spareCount: number;
   isStudent: boolean;
   onPage: () => void;
 }) {
-  if (people.length === 0) return [];
+  const total = people.length + spareCount;
+  if (total === 0 || templates.length === 0) return [];
 
   const loadedTemplates = await Promise.all(templates.map(loadFileImage));
   const aspectRatio = loadedTemplates[0].height / loadedTemplates[0].width;
@@ -206,7 +209,6 @@ async function generateA4Pages({
   const border = mmToPixels(1);
   const availableWidth = A4_WIDTH - margin * 2;
   const availableHeight = A4_HEIGHT - margin * 2;
-  const total = people.length + (isStudent ? 10 : 0);
   const pages: Blob[] = [];
   let processed = 0;
 
@@ -328,11 +330,22 @@ export async function generateNametagArchive({
   const students = people.filter((person) => person["학생 여부"] === "T");
   const nonStudents = people.filter((person) => person["학생 여부"] !== "T");
 
-  if (students.length > 0 && smallTemplates.length === 0) {
-    throw new Error("학생 데이터가 있어 작은 이름표 이미지가 필요합니다.");
+  const wantsStudentTags =
+    students.length > 0 ||
+    (options.arrangedLayout && options.studentSpareCount > 0);
+  const wantsNonStudentTags =
+    nonStudents.length > 0 ||
+    (options.arrangedLayout && options.nonStudentSpareCount > 0);
+
+  if (wantsStudentTags && smallTemplates.length === 0) {
+    throw new Error(
+      "학생 이름표(또는 학생 여유분)를 만들려면 작은 이름표 이미지가 필요합니다.",
+    );
   }
-  if (nonStudents.length > 0 && bigTemplates.length === 0) {
-    throw new Error("일반 데이터가 있어 큰 이름표 이미지가 필요합니다.");
+  if (wantsNonStudentTags && bigTemplates.length === 0) {
+    throw new Error(
+      "일반 이름표(또는 일반 여유분)를 만들려면 큰 이름표 이미지가 필요합니다.",
+    );
   }
 
   await document.fonts.ready;
@@ -355,6 +368,7 @@ export async function generateNametagArchive({
       people: students,
       templates: smallTemplates,
       widthMm: options.studentWidthMm,
+      spareCount: options.studentSpareCount,
       isStudent: true,
       onPage: advancePage,
     });
@@ -362,6 +376,7 @@ export async function generateNametagArchive({
       people: nonStudents,
       templates: bigTemplates,
       widthMm: options.nonStudentWidthMm,
+      spareCount: options.nonStudentSpareCount,
       isStudent: false,
       onPage: advancePage,
     });
