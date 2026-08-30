@@ -5,6 +5,7 @@ import {
   CalendarDays,
   FileText,
   IdCard,
+  Send,
   UsersRound,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,7 @@ const icons: Record<ToolIcon, typeof IdCard> = {
   people: UsersRound,
   calendar: CalendarDays,
   document: FileText,
+  send: Send,
 };
 
 export function ToolCard({ tool }: { tool: ToolDefinition }) {
