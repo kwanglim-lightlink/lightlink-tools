@@ -1,4 +1,9 @@
-export type ToolIcon = "nametag" | "people" | "calendar" | "document";
+export type ToolIcon =
+  | "nametag"
+  | "people"
+  | "calendar"
+  | "document"
+  | "send";
 export type ToolAccent = "brand" | "mint" | "yellow" | "blue";
 
 type ToolBase = {
@@ -30,6 +35,17 @@ export type ToolDefinition = AvailableTool | ComingSoonTool;
  * changing links on the hub.
  */
 export const tools = [
+  {
+    id: "file-transfer",
+    title: "파일 바로건네기",
+    description:
+      "업로드나 계정 없이, 10분 동안 브라우저끼리 파일을 직접 건네요.",
+    category: "파일 · 전송",
+    icon: "send",
+    href: "/tools/file-transfer",
+    status: "available",
+    accent: "mint",
+  },
   {
     id: "nametag-generator",
     title: "국내선교 이름표 생성기",
